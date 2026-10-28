@@ -7,7 +7,7 @@
 #include <time.h>
 
 #define AX_IMPLEMENTATION
-#include "./thirdparty/axiom/axiom.h"
+#include "./thirdparty/axiom.h"
 
 #define HEART_WIDTH 80
 #define HEART_HEIGHT 40
@@ -54,7 +54,7 @@ void heart_build(Heart_Model *model)
                 float y_negative = heart_field(x, y - step, z);
                 float z_positive = heart_field(x, y, z + step);
                 float z_negative = heart_field(x, y, z - step);
-                
+
                 float normal_x, normal_y, normal_z, normal_length;
 
                 if (heart_field(x, y, z) > 0.0f ||
@@ -87,7 +87,11 @@ void heart_build(Heart_Model *model)
 int main(void)
 {
     const char shades[] = ".,:;irsXA253hMHGS#9B&@";
+    const int heart_colors[] = {52, 88, 124, 160, 196, 197, 203, 210};
+    const size_t heart_color_count = AX_ARRAY_LEN(heart_colors);
+
     char pixels[HEART_HEIGHT][HEART_WIDTH];
+    int color_buffer[HEART_HEIGHT][HEART_WIDTH];
     float depth_buffer[HEART_HEIGHT * HEART_WIDTH];
 
     Heart_Model heart = {
@@ -103,6 +107,7 @@ int main(void)
         float sine = sinf(angle);
 
         memset(pixels, ' ', sizeof(pixels));
+        memset(color_buffer, 0, sizeof(color_buffer));
         for (size_t i = 0; i < HEART_HEIGHT * HEART_WIDTH; ++i) {
             depth_buffer[i] = -1e30f;
         }
@@ -112,13 +117,13 @@ int main(void)
 
             float rotated_x = point.x * cosine + point.z * sine;
             float rotated_z = -point.x * sine + point.z * cosine;
-            
+
             float normal_x = point.nx * cosine + point.nz * sine;
             float normal_z = -point.nx * sine + point.nz * cosine;
-            
+
             float distance = 4.2f - rotated_z;
             float scale = 35.0f / distance;
-            
+
             float projected_x = HEART_WIDTH * 0.5f + rotated_x * scale;
             float projected_y = HEART_HEIGHT * 0.48f - point.y * scale * 0.52f;
 
@@ -132,19 +137,40 @@ int main(void)
             }
 
             float diffuse = fmaxf(0.0f, -0.365148f * normal_x + 0.547723f * point.ny + 0.730297f * normal_z);
+
             float rim = 1.0f - fabsf(normal_z);
             float brightness = fminf(1.0f, 0.1f + 0.82f * diffuse + 0.16f * rim * rim);
-            
+
             size_t shade = brightness * (sizeof(shades) - 2);
+            size_t color = brightness * (heart_color_count - 1);
             size_t pixel = screen_y * HEART_WIDTH + screen_x;
 
             depth_buffer[pixel] = rotated_z;
             pixels[screen_y][screen_x] = shades[shade];
+            color_buffer[screen_y][screen_x] = heart_colors[color];
         }
 
         printf("\x1b[H");
         for (size_t row = 0; row < HEART_HEIGHT; ++row) {
-            printf("%.*s\n", HEART_WIDTH, pixels[row]);
+            int current_color = -1;
+
+            for (size_t column = 0; column < HEART_WIDTH; ++column) {
+                char pixel = pixels[row][column];
+                int color = color_buffer[row][column];
+
+                if (pixel == ' ') {
+                    if (current_color != -1) {
+                        printf("\x1b[0m");
+                        current_color = -1;
+                    }
+                } else if (color != current_color) {
+                    printf("\x1b[38;5;%dm", color);
+                    current_color = color;
+                }
+                putchar(pixel);
+            }
+            if (current_color != -1) printf("\x1b[0m");
+            putchar('\n');
         }
         fflush(stdout);
         thrd_sleep(&(struct timespec) {0, 33000000}, NULL);
